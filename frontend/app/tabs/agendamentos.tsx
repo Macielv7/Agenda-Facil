@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,13 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Colors } from '../../constants/Colors';
-import { BOOKINGS, STATUS_LABELS, STATUS_COLORS, STATUS_BG } from '../../constants/data';
+import { agendamentosService, Agendamento } from '../../services/apiService';
+import { STATUS_LABELS, STATUS_COLORS, STATUS_BG } from '../../constants/data';
 
 const FILTER_TABS = [
   { id: 'todos', label: 'Todos' },
@@ -18,15 +21,31 @@ const FILTER_TABS = [
   { id: 'cancelado', label: 'Cancelados' },
 ];
 
-function BookingCard({ booking, onCancel, onConfirm, onRefuse }: {
-  booking: typeof BOOKINGS[0];
-  onCancel: (id: string) => void;
-  onConfirm: (id: string) => void;
-  onRefuse: (id: string) => void;
+function formatarDataHora(dataHora: string) {
+  try {
+    const d = new Date(dataHora);
+    const data = d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+    const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return { data, hora };
+  } catch {
+    return { data: dataHora, hora: '' };
+  }
+}
+
+function BookingCard({
+  booking,
+  onAtualizarStatus,
+  atualizando,
+}: {
+  booking: Agendamento;
+  onAtualizarStatus: (id: number, status: 'confirmado' | 'cancelado' | 'concluido') => void;
+  atualizando: number | null;
 }) {
-  const statusColor = STATUS_COLORS[booking.status];
-  const statusBg = STATUS_BG[booking.status];
-  const statusLabel = STATUS_LABELS[booking.status];
+  const statusColor = STATUS_COLORS[booking.status] || '#666';
+  const statusBg = STATUS_BG[booking.status] || '#eee';
+  const statusLabel = STATUS_LABELS[booking.status] || booking.status;
+  const { data, hora } = formatarDataHora(booking.data_hora);
+  const isAtualizando = atualizando === booking.id;
 
   return (
     <View style={styles.card}>
@@ -34,60 +53,84 @@ function BookingCard({ booking, onCancel, onConfirm, onRefuse }: {
         <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
           <Text style={[styles.statusText, { color: statusColor }]}>
             {booking.status === 'confirmado' ? '✅ ' :
-             booking.status === 'pendente' ? '⏰ ' : '❌ '}
+             booking.status === 'pendente' ? '⏰ ' :
+             booking.status === 'concluido' ? '🏁 ' : '❌ '}
             {statusLabel}
           </Text>
         </View>
-        <Text style={styles.bookingId}>ID: {booking.id}</Text>
+        <Text style={styles.bookingId}>ID: #{booking.id}</Text>
       </View>
 
-      <Text style={styles.professionalName}>{booking.professionalName}</Text>
-      <Text style={styles.profession}>{booking.profession}</Text>
+      <Text style={styles.professionalName}>
+        {booking.profissional_nome || booking.cliente_nome}
+      </Text>
+      <Text style={styles.profession}>
+        {booking.profissao || ''}
+      </Text>
 
       <View style={styles.serviceBox}>
         <Text style={styles.serviceLabel}>Serviço</Text>
-        <Text style={styles.serviceName}>{booking.service}</Text>
+        <Text style={styles.serviceName}>{booking.servico_nome}</Text>
+        {booking.duracao_min && (
+          <Text style={styles.serviceDuration}>⏱ {booking.duracao_min} min</Text>
+        )}
       </View>
 
       <View style={styles.dateRow}>
-        <Text style={styles.dateText}>📅  {booking.date}</Text>
-        <Text style={styles.timeText}>🕐  {booking.time}</Text>
+        <Text style={styles.dateText}>📅  {data}</Text>
+        <Text style={styles.timeText}>🕐  {hora}</Text>
       </View>
+
+      {booking.observacao ? (
+        <Text style={styles.observacao}>💬 {booking.observacao}</Text>
+      ) : null}
 
       <View style={styles.divider} />
 
       <View style={styles.cardFooter}>
         <View>
           <Text style={styles.valorLabel}>Valor</Text>
-          <Text style={styles.valor}>R$ {booking.value}</Text>
+          <Text style={styles.valor}>R$ {booking.valor.toFixed(2)}</Text>
         </View>
 
-        <View style={styles.actions}>
-          {booking.status === 'confirmado' && (
-            <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={() => onCancel(booking.id)}
-            >
-              <Text style={styles.cancelBtnText}>Cancelar</Text>
-            </TouchableOpacity>
-          )}
-          {booking.status === 'pendente' && (
-            <>
-              <TouchableOpacity
-                style={styles.confirmBtn}
-                onPress={() => onConfirm(booking.id)}
-              >
-                <Text style={styles.confirmBtnText}>Confirmar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.refuseBtn}
-                onPress={() => onRefuse(booking.id)}
-              >
-                <Text style={styles.refuseBtnText}>Recusar</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
+        {isAtualizando ? (
+          <ActivityIndicator color={Colors.primary} />
+        ) : (
+          <View style={styles.actions}>
+            {booking.status === 'confirmado' && (
+              <>
+                <TouchableOpacity
+                  style={styles.successBtn}
+                  onPress={() => onAtualizarStatus(booking.id, 'concluido')}
+                >
+                  <Text style={styles.successBtnText}>Concluir</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => onAtualizarStatus(booking.id, 'cancelado')}
+                >
+                  <Text style={styles.cancelBtnText}>Cancelar</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            {booking.status === 'pendente' && (
+              <>
+                <TouchableOpacity
+                  style={styles.confirmBtn}
+                  onPress={() => onAtualizarStatus(booking.id, 'confirmado')}
+                >
+                  <Text style={styles.confirmBtnText}>Confirmar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.refuseBtn}
+                  onPress={() => onAtualizarStatus(booking.id, 'cancelado')}
+                >
+                  <Text style={styles.refuseBtnText}>Recusar</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
       </View>
     </View>
   );
@@ -95,37 +138,75 @@ function BookingCard({ booking, onCancel, onConfirm, onRefuse }: {
 
 export default function AgendamentosScreen() {
   const [activeFilter, setActiveFilter] = useState('todos');
-  const [bookings, setBookings] = useState(BOOKINGS);
+  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [atualizando, setAtualizando] = useState<number | null>(null);
+  const [erro, setErro] = useState('');
 
-  const filtered = bookings.filter(
-    (b) => activeFilter === 'todos' || b.status === activeFilter
+  const carregarAgendamentos = useCallback(async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    setErro('');
+    try {
+      const dados = await agendamentosService.listar();
+      setAgendamentos(dados);
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao carregar agendamentos.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarAgendamentos();
+  }, [carregarAgendamentos]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    carregarAgendamentos(true);
+  };
+
+  const handleAtualizarStatus = async (
+    id: number,
+    status: 'confirmado' | 'cancelado' | 'concluido',
+  ) => {
+    const mensagens: Record<string, string> = {
+      cancelado: 'Deseja cancelar este agendamento?',
+      confirmado: 'Deseja confirmar este agendamento?',
+      concluido: 'Marcar este agendamento como concluído?',
+    };
+
+    Alert.alert(
+      status.charAt(0).toUpperCase() + status.slice(1),
+      mensagens[status],
+      [
+        { text: 'Não', style: 'cancel' },
+        {
+          text: 'Sim',
+          style: status === 'cancelado' ? 'destructive' : 'default',
+          onPress: async () => {
+            setAtualizando(id);
+            try {
+              await agendamentosService.atualizarStatus(id, status);
+              // Atualiza localmente sem refetch completo
+              setAgendamentos((prev) =>
+                prev.map((a) => (a.id === id ? { ...a, status } : a)),
+              );
+            } catch (e: any) {
+              Alert.alert('Erro', e.message || 'Não foi possível atualizar o agendamento.');
+            } finally {
+              setAtualizando(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const filtered = agendamentos.filter(
+    (a) => activeFilter === 'todos' || a.status === activeFilter,
   );
-
-  const handleCancel = (id: string) => {
-    Alert.alert('Cancelar', 'Deseja cancelar este agendamento?', [
-      { text: 'Não', style: 'cancel' },
-      {
-        text: 'Sim',
-        style: 'destructive',
-        onPress: () =>
-          setBookings((prev) =>
-            prev.map((b) => (b.id === id ? { ...b, status: 'cancelado' } : b))
-          ),
-      },
-    ]);
-  };
-
-  const handleConfirm = (id: string) => {
-    setBookings((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, status: 'confirmado' } : b))
-    );
-  };
-
-  const handleRefuse = (id: string) => {
-    setBookings((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, status: 'cancelado' } : b))
-    );
-  };
 
   return (
     <View style={styles.container}>
@@ -165,21 +246,41 @@ export default function AgendamentosScreen() {
         style={styles.list}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+        }
       >
-        {filtered.map((b) => (
-          <BookingCard
-            key={b.id}
-            booking={b}
-            onCancel={handleCancel}
-            onConfirm={handleConfirm}
-            onRefuse={handleRefuse}
-          />
-        ))}
-        {filtered.length === 0 && (
+        {loading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Carregando agendamentos...</Text>
+          </View>
+        ) : erro ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyEmoji}>⚠️</Text>
+            <Text style={styles.emptyText}>{erro}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={() => carregarAgendamentos()}>
+              <Text style={styles.retryText}>Tentar novamente</Text>
+            </TouchableOpacity>
+          </View>
+        ) : filtered.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyEmoji}>📋</Text>
-            <Text style={styles.emptyText}>Nenhum agendamento encontrado</Text>
+            <Text style={styles.emptyText}>
+              {activeFilter === 'todos'
+                ? 'Nenhum agendamento encontrado'
+                : `Nenhum agendamento ${STATUS_LABELS[activeFilter]?.toLowerCase()}`}
+            </Text>
           </View>
+        ) : (
+          filtered.map((b) => (
+            <BookingCard
+              key={b.id}
+              booking={b}
+              onAtualizarStatus={handleAtualizarStatus}
+              atualizando={atualizando}
+            />
+          ))
         )}
       </ScrollView>
     </View>
@@ -253,6 +354,15 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingBottom: 100,
   },
+  loadingState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
   card: {
     backgroundColor: Colors.white,
     borderRadius: 18,
@@ -292,6 +402,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textSecondary,
     marginBottom: 14,
+    textTransform: 'capitalize',
   },
   serviceBox: {
     backgroundColor: Colors.gray100,
@@ -309,6 +420,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.text,
   },
+  serviceDuration: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
   dateRow: {
     flexDirection: 'row',
     gap: 20,
@@ -321,6 +437,12 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 13,
     color: Colors.textSecondary,
+  },
+  observacao: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   divider: {
     height: 1,
@@ -358,6 +480,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.danger,
   },
+  successBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: '#22C55E',
+  },
+  successBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.white,
+  },
   confirmBtn: {
     paddingHorizontal: 14,
     paddingVertical: 9,
@@ -392,5 +525,17 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+  },
+  retryText: {
+    color: Colors.white,
+    fontWeight: '600',
   },
 });

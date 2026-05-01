@@ -1,182 +1,248 @@
-import React from 'react';
+import { useEffect } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
-  Dimensions,
-  Image,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Colors } from '../constants/Colors';
+import { Calendar, Clock, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react-native';
+import { useAuth } from '../contexts/AuthContext';
 
-const { width, height } = Dimensions.get('window');
+export default function Index() {
+  const { usuario, loading } = useAuth();
 
-export default function SplashScreen() {
+  // ─── Guard: se já autenticado, redirecionar para tela correta ──
+  useEffect(() => {
+    if (!loading && usuario) {
+      if (usuario.tipo === 'empreendedor') {
+        router.replace('/tabs/empreendedor');
+      } else {
+        router.replace('/tabs');
+      }
+    }
+  }, [usuario, loading]);
+
+  // Mostrar loading enquanto verifica sessão
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <View style={styles.logoBox}>
+          <Calendar size={24} color="#fff" />
+        </View>
+        <ActivityIndicator color="#6C63FF" style={{ marginTop: 24 }} />
+        <Text style={styles.loadingText}>Carregando...</Text>
+      </View>
+    );
+  }
+
+  // Não mostrar landing se já autenticado (o useEffect vai redirecionar)
+  if (usuario) return null;
+
   return (
-    <View style={styles.container}>
+    <ScrollView contentContainerStyle={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.logoBox}>
-          <Text style={styles.logoIcon}>📅</Text>
+          <Calendar size={20} color="#fff" />
         </View>
-        <Text style={styles.appName}>AgendaFácil</Text>
-        <Text style={styles.tagline}>Agende serviços de forma rápida e prática</Text>
+        <Text style={styles.logoText}>AgendaFácil</Text>
       </View>
 
-      {/* Illustration placeholder */}
-      <View style={styles.illustrationContainer}>
-        <View style={styles.illustrationBg}>
-          <Text style={styles.illustrationEmoji}>💆‍♀️✂️💅🏋️</Text>
-          <Text style={styles.illustrationText}>
-            Conectamos você aos{'\n'}melhores profissionais
-          </Text>
+      {/* Hero */}
+      <View style={styles.hero}>
+        <View style={styles.badge}>
+          <Sparkles size={14} />
+          <Text style={styles.badgeText}> Pontualidade que encanta clientes</Text>
+        </View>
+
+        <Text style={styles.title}>
+          Sua agenda <Text style={styles.highlight}>profissional</Text>, simples e moderna.
+        </Text>
+
+        <Text style={styles.subtitle}>
+          Empreendedores e clientes em sintonia. Cadastre serviços, gerencie horários e nunca mais perca um cliente por atraso.
+        </Text>
+
+        {/* Buttons */}
+        <View style={styles.buttons}>
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={() => router.push('/auth/register')}
+          >
+            <Text style={styles.primaryText}>Começar agora</Text>
+            <ArrowRight size={16} color="#fff" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.outlineBtn}
+            onPress={() => router.push('/auth/login')}
+          >
+            <Text style={styles.outlineText}>Já tenho conta</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* CTA Buttons */}
-      <View style={styles.buttonsContainer}>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => router.push('/auth/login')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.primaryButtonText}>Entrar</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => router.push('/auth/register')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.secondaryButtonText}>Criar conta grátis</Text>
-        </TouchableOpacity>
+      {/* Features */}
+      <View style={styles.features}>
+        {[
+          {
+            icon: Calendar,
+            title: 'Agenda inteligente',
+            desc: 'Sem conflitos de horário, com disponibilidade automática.',
+          },
+          {
+            icon: Clock,
+            title: 'Métricas de pontualidade',
+            desc: 'Acompanhe seu percentual de atendimentos no horário.',
+          },
+          {
+            icon: CheckCircle2,
+            title: 'Avaliação dos clientes',
+            desc: 'Construa reputação com reviews verificados.',
+          },
+        ].map((f, i) => {
+          const Icon = f.icon;
+          return (
+            <View key={i} style={styles.card}>
+              <View style={styles.cardIcon}>
+                <Icon size={20} color="#6C63FF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardTitle}>{f.title}</Text>
+                <Text style={styles.cardDesc}>{f.desc}</Text>
+              </View>
+            </View>
+          );
+        })}
       </View>
-
-      {/* Pagination dots */}
-      <View style={styles.dotsContainer}>
-        <View style={[styles.dot, styles.dotActive]} />
-        <View style={styles.dot} />
-        <View style={styles.dot} />
-      </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  loadingContainer: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#64748b',
+  },
+  container: {
+    padding: 20,
     paddingTop: 60,
-    paddingBottom: 40,
-    paddingHorizontal: 24,
+    backgroundColor: '#f8fafc',
   },
   header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 40,
+    gap: 10,
   },
   logoBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 22,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#6C63FF',
     alignItems: 'center',
-    marginBottom: 16,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  logoIcon: {
-    fontSize: 36,
-  },
-  appName: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: Colors.text,
-    letterSpacing: -0.5,
-    marginBottom: 8,
-  },
-  tagline: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  illustrationContainer: {
-    flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
-    marginVertical: 20,
   },
-  illustrationBg: {
-    width: width - 48,
-    height: width - 48,
-    borderRadius: 32,
-    backgroundColor: Colors.primaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  illustrationEmoji: {
-    fontSize: 64,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  illustrationText: {
+  logoText: {
     fontSize: 18,
-    fontWeight: '600',
-    color: Colors.primary,
+    fontWeight: 'bold',
+  },
+  hero: {
+    marginTop: 40,
+    alignItems: 'center',
+  },
+  badge: {
+    flexDirection: 'row',
+    backgroundColor: '#e2e8f0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  badgeText: {
+    fontSize: 12,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
     textAlign: 'center',
-    lineHeight: 26,
+    marginTop: 16,
   },
-  buttonsContainer: {
+  highlight: {
+    color: '#6C63FF',
+  },
+  subtitle: {
+    textAlign: 'center',
+    marginTop: 10,
+    color: '#64748b',
+    lineHeight: 20,
+  },
+  buttons: {
+    marginTop: 24,
+    width: '100%',
     gap: 12,
-    marginBottom: 24,
   },
-  primaryButton: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 18,
+  primaryBtn: {
+    backgroundColor: '#6C63FF',
+    padding: 16,
     borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  primaryButtonText: {
-    color: Colors.white,
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  secondaryButton: {
-    backgroundColor: 'transparent',
-    paddingVertical: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-  },
-  secondaryButtonText: {
-    color: Colors.primary,
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  dotsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     gap: 8,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.gray300,
+  primaryText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
-  dotActive: {
-    width: 24,
-    backgroundColor: Colors.primary,
+  outlineBtn: {
+    borderWidth: 2,
+    borderColor: '#6C63FF',
+    padding: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  outlineText: {
+    color: '#6C63FF',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  features: {
+    marginTop: 40,
+    gap: 12,
+    paddingBottom: 40,
+  },
+  card: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  cardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#eef2ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTitle: {
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  cardDesc: {
+    color: '#64748b',
+    fontSize: 12,
   },
 });

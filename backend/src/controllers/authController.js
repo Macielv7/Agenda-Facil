@@ -10,8 +10,8 @@ async function registro(req, res) {
     return res.status(400).json({ erro: 'Campos obrigatórios: nome, email, senha, tipo' });
   }
 
-  if (!['cliente', 'profissional'].includes(tipo)) {
-    return res.status(400).json({ erro: 'Tipo deve ser cliente ou profissional' });
+  if (!['cliente', 'empreendedor'].includes(tipo)) {
+    return res.status(400).json({ erro: 'Tipo deve ser cliente ou empreendedor' });
   }
 
   const emailExistente = db.prepare('SELECT id FROM usuarios WHERE email = ?').get(email);
@@ -88,4 +88,25 @@ function perfil(req, res) {
   res.json(usuario);
 }
 
-module.exports = { registro, login, perfil };
+// PUT /api/auth/perfil
+function atualizarPerfil(req, res) {
+  const { nome, telefone, profissao } = req.body;
+  const usuarioId = req.usuario.id;
+
+  db.prepare(`
+    UPDATE usuarios SET
+      nome          = COALESCE(?, nome),
+      telefone      = COALESCE(?, telefone),
+      profissao     = COALESCE(?, profissao),
+      atualizado_em = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(nome || null, telefone || null, profissao || null, usuarioId);
+
+  const atualizado = db.prepare(
+    'SELECT id, nome, email, tipo, telefone, foto_url, profissao, avaliacao_media, criado_em FROM usuarios WHERE id = ?'
+  ).get(usuarioId);
+
+  res.json({ mensagem: 'Perfil atualizado', usuario: atualizado });
+}
+
+module.exports = { registro, login, perfil, atualizarPerfil };

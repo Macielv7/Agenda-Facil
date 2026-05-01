@@ -5,7 +5,7 @@ function listar(req, res) {
   const { id, tipo } = req.usuario;
   const { status } = req.query;
 
-  const campo = tipo === 'cliente' ? 'a.cliente_id' : 'a.profissional_id';
+  const campo = tipo === 'cliente' ? 'a.cliente_id' : 'a.empreendedor_id';
 
   let sql = `
     SELECT
@@ -14,13 +14,13 @@ function listar(req, res) {
       s.duracao_min,
       c.nome       AS cliente_nome,
       c.foto_url   AS cliente_foto,
-      p.nome       AS profissional_nome,
-      p.foto_url   AS profissional_foto,
-      p.profissao
+      e.nome       AS empreendedor_nome,
+      e.foto_url   AS empreendedor_foto,
+      e.profissao
     FROM agendamentos a
     JOIN servicos  s ON s.id = a.servico_id
     JOIN usuarios  c ON c.id = a.cliente_id
-    JOIN usuarios  p ON p.id = a.profissional_id
+    JOIN usuarios  e ON e.id = a.empreendedor_id
     WHERE ${campo} = ?
   `;
 
@@ -43,21 +43,20 @@ function buscarPorId(req, res) {
       a.*,
       s.nome AS servico_nome, s.duracao_min,
       c.nome AS cliente_nome, c.foto_url AS cliente_foto,
-      p.nome AS profissional_nome, p.foto_url AS profissional_foto, p.profissao
+      e.nome AS empreendedor_nome, e.foto_url AS empreendedor_foto, e.profissao
     FROM agendamentos a
     JOIN servicos s ON s.id = a.servico_id
     JOIN usuarios c ON c.id = a.cliente_id
-    JOIN usuarios p ON p.id = a.profissional_id
+    JOIN usuarios e ON e.id = a.empreendedor_id
     WHERE a.id = ?
   `).get(req.params.id);
 
   if (!agendamento) return res.status(404).json({ erro: 'Agendamento não encontrado' });
 
-  // Garante que só o cliente ou profissional envolvido acesse
   const { id, tipo } = req.usuario;
   const temAcesso =
     (tipo === 'cliente' && agendamento.cliente_id === id) ||
-    (tipo === 'profissional' && agendamento.profissional_id === id);
+    (tipo === 'empreendedor' && agendamento.empreendedor_id === id);
 
   if (!temAcesso) return res.status(403).json({ erro: 'Sem permissão' });
 
@@ -66,40 +65,40 @@ function buscarPorId(req, res) {
 
 // POST /api/agendamentos
 function criar(req, res) {
-  const { profissional_id, servico_id, data_hora, observacao } = req.body;
+  const { empreendedor_id, servico_id, data_hora, observacao } = req.body;
   const cliente_id = req.usuario.id;
 
-  if (!profissional_id || !servico_id || !data_hora) {
-    return res.status(400).json({ erro: 'profissional_id, servico_id e data_hora são obrigatórios' });
+  if (!empreendedor_id || !servico_id || !data_hora) {
+    return res.status(400).json({ erro: 'empreendedor_id, servico_id e data_hora são obrigatórios' });
   }
 
   const servico = db.prepare('SELECT * FROM servicos WHERE id = ? AND ativo = 1').get(servico_id);
   if (!servico) return res.status(404).json({ erro: 'Serviço não encontrado' });
 
-  if (servico.profissional_id !== profissional_id) {
-    return res.status(400).json({ erro: 'Serviço não pertence a esse profissional' });
+  if (servico.empreendedor_id !== empreendedor_id) {
+    return res.status(400).json({ erro: 'Serviço não pertence a esse empreendedor' });
   }
 
   // Verificar conflito de horário
   const conflito = db.prepare(`
     SELECT id FROM agendamentos
-    WHERE profissional_id = ?
+    WHERE empreendedor_id = ?
       AND data_hora = ?
       AND status NOT IN ('cancelado')
-  `).get(profissional_id, data_hora);
+  `).get(empreendedor_id, data_hora);
 
   if (conflito) return res.status(409).json({ erro: 'Horário indisponível' });
 
   const resultado = db.prepare(`
-    INSERT INTO agendamentos (cliente_id, profissional_id, servico_id, data_hora, valor, observacao)
+    INSERT INTO agendamentos (cliente_id, empreendedor_id, servico_id, data_hora, valor, observacao)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(cliente_id, profissional_id, servico_id, data_hora, servico.preco, observacao || null);
+  `).run(cliente_id, empreendedor_id, servico_id, data_hora, servico.preco, observacao || null);
 
-  // Notificar profissional
+  // Notificar empreendedor
   db.prepare(`
     INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo)
     VALUES (?, 'Novo agendamento', 'Você tem um novo agendamento pendente.', 'agendamento')
-  `).run(profissional_id);
+  `).run(empreendedor_id);
 
   res.status(201).json({ id: resultado.lastInsertRowid, mensagem: 'Agendamento criado' });
 }
@@ -118,14 +117,16 @@ function atualizarStatus(req, res) {
 
   const { id, tipo } = req.usuario;
 
-  // Regras de negócio
-  if (status === 'confirmado' && tipo !== 'profissional') {
-    return res.status(403).json({ erro: 'Somente o profissional pode confirmar' });
+  if (status === 'confirmado' && tipo !== 'empreendedor') {
+    return res.status(403).json({ erro: 'Somente o empreendedor pode confirmar' });
   }
   if (status === 'cancelado') {
     const temAcesso =
-      agendamento.cliente_id === id || agendamento.profissional_id === id;
+      agendamento.cliente_id === id || agendamento.empreendedor_id === id;
     if (!temAcesso) return res.status(403).json({ erro: 'Sem permissão para cancelar' });
+  }
+  if (status === 'concluido' && tipo !== 'empreendedor') {
+    return res.status(403).json({ erro: 'Somente o empreendedor pode concluir' });
   }
 
   db.prepare(`
@@ -134,7 +135,7 @@ function atualizarStatus(req, res) {
 
   // Notificar a outra parte
   const notificarId =
-    tipo === 'profissional' ? agendamento.cliente_id : agendamento.profissional_id;
+    tipo === 'empreendedor' ? agendamento.cliente_id : agendamento.empreendedor_id;
 
   const msgs = {
     confirmado: 'Seu agendamento foi confirmado!',

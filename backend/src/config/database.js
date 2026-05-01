@@ -5,12 +5,34 @@ require('dotenv').config();
 const DB_PATH = process.env.DB_PATH || './database.sqlite';
 const db = new Database(path.resolve(DB_PATH));
 
-// Ativar foreign keys
+// Ativar foreign keys e WAL
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-// ─── MIGRATIONS ──────────────────────────────────────────────
+// ─── MIGRATIONS ───────────────────────────────────────────────
+// user_version = 2 → schema com tipo 'empreendedor'
 function runMigrations() {
+  const { user_version } = db.prepare('PRAGMA user_version').get();
+
+  if (user_version < 2) {
+    console.log('🔄 Atualizando schema do banco (v1 → v2)...');
+
+    // Desligar FKs temporariamente para drop seguro
+    db.pragma('foreign_keys = OFF');
+
+    db.exec(`
+      DROP TABLE IF EXISTS notificacoes;
+      DROP TABLE IF EXISTS avaliacoes;
+      DROP TABLE IF EXISTS agendamentos;
+      DROP TABLE IF EXISTS produtos;
+      DROP TABLE IF EXISTS servicos;
+      DROP TABLE IF EXISTS usuarios;
+    `);
+
+    db.pragma('foreign_keys = ON');
+  }
+
+  // Criar/garantir tabelas (roda sempre, idempotente após drop)
   db.exec(`
     -- Tabela de Usuários
     CREATE TABLE IF NOT EXISTS usuarios (
@@ -18,7 +40,7 @@ function runMigrations() {
       nome            TEXT    NOT NULL,
       email           TEXT    NOT NULL UNIQUE,
       senha_hash      TEXT    NOT NULL,
-      tipo            TEXT    NOT NULL CHECK(tipo IN ('cliente', 'profissional')),
+      tipo            TEXT    NOT NULL CHECK(tipo IN ('cliente', 'empreendedor')),
       telefone        TEXT,
       foto_url        TEXT,
       profissao       TEXT,
@@ -30,7 +52,7 @@ function runMigrations() {
     -- Tabela de Serviços
     CREATE TABLE IF NOT EXISTS servicos (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      profissional_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      empreendedor_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
       nome            TEXT    NOT NULL,
       descricao       TEXT,
       preco           REAL    NOT NULL,
@@ -44,7 +66,7 @@ function runMigrations() {
     CREATE TABLE IF NOT EXISTS agendamentos (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       cliente_id      INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-      profissional_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      empreendedor_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
       servico_id      INTEGER NOT NULL REFERENCES servicos(id) ON DELETE CASCADE,
       data_hora       DATETIME NOT NULL,
       status          TEXT    NOT NULL DEFAULT 'pendente'
@@ -58,7 +80,7 @@ function runMigrations() {
     -- Tabela de Produtos
     CREATE TABLE IF NOT EXISTS produtos (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      profissional_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      empreendedor_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
       nome            TEXT    NOT NULL,
       descricao       TEXT,
       preco           REAL    NOT NULL,
@@ -74,7 +96,7 @@ function runMigrations() {
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       agendamento_id  INTEGER NOT NULL UNIQUE REFERENCES agendamentos(id) ON DELETE CASCADE,
       cliente_id      INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-      profissional_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      empreendedor_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
       nota            INTEGER NOT NULL CHECK(nota BETWEEN 1 AND 5),
       comentario      TEXT,
       criado_em       DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -92,15 +114,17 @@ function runMigrations() {
     );
 
     -- Índices para performance
-    CREATE INDEX IF NOT EXISTS idx_servicos_profissional   ON servicos(profissional_id);
-    CREATE INDEX IF NOT EXISTS idx_agendamentos_cliente    ON agendamentos(cliente_id);
-    CREATE INDEX IF NOT EXISTS idx_agendamentos_prof       ON agendamentos(profissional_id);
-    CREATE INDEX IF NOT EXISTS idx_agendamentos_data       ON agendamentos(data_hora);
-    CREATE INDEX IF NOT EXISTS idx_produtos_profissional   ON produtos(profissional_id);
-    CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario    ON notificacoes(usuario_id);
+    CREATE INDEX IF NOT EXISTS idx_servicos_empreendedor  ON servicos(empreendedor_id);
+    CREATE INDEX IF NOT EXISTS idx_agendamentos_cliente   ON agendamentos(cliente_id);
+    CREATE INDEX IF NOT EXISTS idx_agendamentos_empreed   ON agendamentos(empreendedor_id);
+    CREATE INDEX IF NOT EXISTS idx_agendamentos_data      ON agendamentos(data_hora);
+    CREATE INDEX IF NOT EXISTS idx_produtos_empreendedor  ON produtos(empreendedor_id);
+    CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario   ON notificacoes(usuario_id);
   `);
 
-  console.log('✅ Migrations executadas com sucesso');
+  // Marcar schema como versão 2
+  db.pragma('user_version = 2');
+  console.log('✅ Migrations executadas com sucesso (schema v2)');
 }
 
 runMigrations();

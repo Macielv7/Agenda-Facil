@@ -18,7 +18,6 @@ function authMiddleware(req, res, next) {
   }
 }
 
-// Middleware para restringir por tipo de usuário
 function somenteCliente(req, res, next) {
   if (req.usuario.tipo !== 'cliente') {
     return res.status(403).json({ erro: 'Acesso apenas para clientes' });
@@ -26,11 +25,11 @@ function somenteCliente(req, res, next) {
   next();
 }
 
-function somenteProfissional(req, res, next) {
-  if (req.usuario.tipo !== 'profissional') {
-    return res.status(403).json({ erro: 'Acesso apenas para profissionais' });
+function somenteEmpreendedor(req, res, next) {
+  if (req.usuario.tipo !== 'empreendedor') {
+    return res.status(403).json({ erro: 'Acesso apenas para empreendedores' });
   }
   next();
 }
 
-module.exports = { authMiddleware, somenteCliente, somenteProfissional };
+module.exports = { authMiddleware, somenteCliente, somenteEmpreendedor };

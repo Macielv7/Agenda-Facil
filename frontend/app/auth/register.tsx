@@ -8,23 +8,58 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Colors } from '../../constants/Colors';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function RegisterScreen() {
-  const [userType, setUserType] = useState<'cliente' | 'profissional'>('cliente');
+  const { registro } = useAuth();
+  const [userType, setUserType] = useState<'cliente' | 'empreendedor'>('cliente');
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [profissao, setProfissao] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState('');
 
-  const handleRegister = () => {
-    if (userType === 'profissional') {
-      router.replace('/tabs/profissional');
-    } else {
-      router.replace('/tabs');
+  const handleRegister = async () => {
+    setErro('');
+
+    if (!nome.trim() || !email.trim() || !senha.trim()) {
+      setErro('Preencha todos os campos obrigatórios.');
+      return;
+    }
+    if (userType === 'cliente' && senha !== confirmarSenha) {
+      setErro('As senhas não coincidem.');
+      return;
+    }
+    if (senha.length < 6) {
+      setErro('A senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await registro({
+        nome: nome.trim(),
+        email: email.trim(),
+        senha,
+        tipo: userType,
+        profissao: userType === 'empreendedor' ? profissao.trim() : undefined,
+      });
+
+      if (userType === 'empreendedor') {
+        router.replace('/tabs/empreendedor');
+      } else {
+        router.replace('/tabs');
+      }
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao criar conta. Tente novamente.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -64,11 +99,11 @@ export default function RegisterScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleBtn, userType === 'profissional' && styles.toggleActive]}
-            onPress={() => setUserType('profissional')}
+            style={[styles.toggleBtn, userType === 'empreendedor' && styles.toggleActive]}
+            onPress={() => setUserType('empreendedor')}
           >
-            <Text style={[styles.toggleText, userType === 'profissional' && styles.toggleTextActive]}>
-              Profissional
+            <Text style={[styles.toggleText, userType === 'empreendedor' && styles.toggleTextActive]}>
+              Empreendedor
             </Text>
           </TouchableOpacity>
         </View>
@@ -85,6 +120,7 @@ export default function RegisterScreen() {
                 placeholderTextColor={Colors.gray400}
                 value={nome}
                 onChangeText={setNome}
+                editable={!loading}
               />
             </View>
           </View>
@@ -101,11 +137,12 @@ export default function RegisterScreen() {
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                editable={!loading}
               />
             </View>
           </View>
 
-          {userType === 'profissional' && (
+          {userType === 'empreendedor' && (
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Profissão</Text>
               <View style={styles.inputWrapper}>
@@ -116,6 +153,7 @@ export default function RegisterScreen() {
                   placeholderTextColor={Colors.gray400}
                   value={profissao}
                   onChangeText={setProfissao}
+                  editable={!loading}
                 />
               </View>
             </View>
@@ -132,6 +170,7 @@ export default function RegisterScreen() {
                 value={senha}
                 onChangeText={setSenha}
                 secureTextEntry
+                editable={!loading}
               />
             </View>
           </View>
@@ -148,13 +187,26 @@ export default function RegisterScreen() {
                   value={confirmarSenha}
                   onChangeText={setConfirmarSenha}
                   secureTextEntry
+                  editable={!loading}
                 />
               </View>
             </View>
           )}
 
-          <TouchableOpacity style={styles.primaryBtn} onPress={handleRegister} activeOpacity={0.85}>
-            <Text style={styles.primaryBtnText}>Criar conta</Text>
+          {/* Erro */}
+          {erro ? <Text style={styles.errorText}>{erro}</Text> : null}
+
+          <TouchableOpacity
+            style={[styles.primaryBtn, loading && styles.primaryBtnDisabled]}
+            onPress={handleRegister}
+            activeOpacity={0.85}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : (
+              <Text style={styles.primaryBtnText}>Criar conta</Text>
+            )}
           </TouchableOpacity>
 
           <View style={styles.footerRow}>
@@ -287,6 +339,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.text,
   },
+  errorText: {
+    fontSize: 13,
+    color: '#EF4444',
+    textAlign: 'center',
+    backgroundColor: '#FEE2E2',
+    padding: 10,
+    borderRadius: 10,
+  },
   primaryBtn: {
     backgroundColor: Colors.primary,
     paddingVertical: 17,
@@ -298,6 +358,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 8,
+  },
+  primaryBtnDisabled: {
+    opacity: 0.65,
   },
   primaryBtnText: {
     color: Colors.white,

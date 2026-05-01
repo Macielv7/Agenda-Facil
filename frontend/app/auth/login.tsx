@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,21 +8,48 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Colors } from '../../constants/Colors';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function LoginScreen() {
-  const [userType, setUserType] = useState<'cliente' | 'profissional'>('cliente');
+  const { login, usuario } = useAuth();
+  const [userType, setUserType] = useState<'cliente' | 'empreendedor'>('cliente');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [lembrarMe, setLembrarMe] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState('');
+  const [loginFeito, setLoginFeito] = useState(false);
 
-  const handleLogin = () => {
-    if (userType === 'profissional') {
-      router.replace('/tabs/profissional');
-    } else {
-      router.replace('/tabs');
+  // Redireciona usando o tipo REAL retornado pela API após login
+  useEffect(() => {
+    if (loginFeito && usuario) {
+      if (usuario.tipo === 'empreendedor') {
+        router.replace('/tabs/empreendedor');
+      } else {
+        router.replace('/tabs');
+      }
+    }
+  }, [loginFeito, usuario]);
+
+  const handleLogin = async () => {
+    if (!email.trim() || !senha.trim()) {
+      setErro('Preencha e-mail e senha.');
+      return;
+    }
+    setErro('');
+    setLoading(true);
+    try {
+      await login(email.trim(), senha);
+      setLoginFeito(true); // dispara o useEffect acima com o usuario real
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao fazer login. Tente novamente.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -56,11 +83,11 @@ export default function LoginScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleBtn, userType === 'profissional' && styles.toggleActive]}
-            onPress={() => setUserType('profissional')}
+            style={[styles.toggleBtn, userType === 'empreendedor' && styles.toggleActive]}
+            onPress={() => setUserType('empreendedor')}
           >
-            <Text style={[styles.toggleText, userType === 'profissional' && styles.toggleTextActive]}>
-              Profissional
+            <Text style={[styles.toggleText, userType === 'empreendedor' && styles.toggleTextActive]}>
+              Empreendedor
             </Text>
           </TouchableOpacity>
         </View>
@@ -79,6 +106,7 @@ export default function LoginScreen() {
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                editable={!loading}
               />
             </View>
           </View>
@@ -94,9 +122,13 @@ export default function LoginScreen() {
                 value={senha}
                 onChangeText={setSenha}
                 secureTextEntry
+                editable={!loading}
               />
             </View>
           </View>
+
+          {/* Erro */}
+          {erro ? <Text style={styles.errorText}>{erro}</Text> : null}
 
           {/* Lembrar / Esqueceu */}
           <View style={styles.row}>
@@ -114,8 +146,17 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin} activeOpacity={0.85}>
-            <Text style={styles.primaryBtnText}>Entrar</Text>
+          <TouchableOpacity
+            style={[styles.primaryBtn, loading && styles.primaryBtnDisabled]}
+            onPress={handleLogin}
+            activeOpacity={0.85}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : (
+              <Text style={styles.primaryBtnText}>Entrar</Text>
+            )}
           </TouchableOpacity>
 
           <View style={styles.footerRow}>
@@ -233,6 +274,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.text,
   },
+  errorText: {
+    fontSize: 13,
+    color: '#EF4444',
+    textAlign: 'center',
+    backgroundColor: '#FEE2E2',
+    padding: 10,
+    borderRadius: 10,
+  },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -281,6 +330,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 8,
+  },
+  primaryBtnDisabled: {
+    opacity: 0.65,
   },
   primaryBtnText: {
     color: Colors.white,

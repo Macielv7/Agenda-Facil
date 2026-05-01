@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,42 +6,104 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  FlatList,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
+import { router } from 'expo-router';
 import { Colors } from '../../constants/Colors';
-import { PROFESSIONALS, CATEGORIES } from '../../constants/data';
+import { servicosService, Servico } from '../../services/apiService';
+import { useAuth } from '../../contexts/AuthContext';
+import { CATEGORIES } from '../../constants/data';
 
-function ProfessionalCard({ professional }: { professional: typeof PROFESSIONALS[0] }) {
+const PROFESSION_EMOJI: Record<string, string> = {
+  barbeiro: '✂️',
+  manicure: '💅',
+  'personal trainer': '🏋️',
+  massoterapeuta: '💆',
+  fisioterapeuta: '🩺',
+  nutricionista: '🥗',
+  default: '👤',
+};
+
+function getProfessionEmoji(profissao?: string): string {
+  if (!profissao) return PROFESSION_EMOJI.default;
+  const key = profissao.toLowerCase();
+  return PROFESSION_EMOJI[key] || PROFESSION_EMOJI.default;
+}
+
+// Agrupa serviços por profissional para exibir como card
+interface ProfissionalCard {
+  profissional_id: number;
+  profissional_nome: string;
+  foto_url?: string;
+  avaliacao_media: number;
+  categoria: string;
+  servicos: Servico[];
+  preco_minimo: number;
+  duracao_min: number;
+}
+
+function agruparPorProfissional(servicos: Servico[]): ProfissionalCard[] {
+  const mapa: Record<number, ProfissionalCard> = {};
+  for (const s of servicos) {
+    if (!mapa[s.profissional_id]) {
+      mapa[s.profissional_id] = {
+        profissional_id: s.profissional_id,
+        profissional_nome: s.profissional_nome || 'Profissional',
+        foto_url: s.foto_url,
+        avaliacao_media: s.avaliacao_media || 0,
+        categoria: s.categoria,
+        servicos: [],
+        preco_minimo: s.preco,
+        duracao_min: s.duracao_min,
+      };
+    }
+    mapa[s.profissional_id].servicos.push(s);
+    if (s.preco < mapa[s.profissional_id].preco_minimo) {
+      mapa[s.profissional_id].preco_minimo = s.preco;
+    }
+  }
+  return Object.values(mapa);
+}
+
+function ProfessionalCard({ card }: { card: ProfissionalCard }) {
+  const handlePress = () => {
+    router.push({
+      pathname: '/tabs/agendar',
+      params: {
+        empreendedor_id: String(card.profissional_id),
+        empreendedor_nome: card.profissional_nome,
+      },
+    });
+  };
+
   return (
-    <TouchableOpacity style={styles.card} activeOpacity={0.85}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={handlePress}>
       <View style={styles.cardContent}>
         {/* Avatar */}
         <View style={styles.avatar}>
           <Text style={styles.avatarEmoji}>
-            {professional.profession === 'Barbeiro' ? '✂️' :
-             professional.profession === 'Manicure' ? '💅' :
-             professional.profession === 'Personal Trainer' ? '🏋️' : '💆'}
+            {getProfessionEmoji(card.servicos[0]?.nome)}
           </Text>
         </View>
 
         {/* Info */}
         <View style={styles.cardInfo}>
           <View style={styles.cardHeader}>
-            <Text style={styles.professionalName}>{professional.name}</Text>
+            <Text style={styles.professionalName}>{card.profissional_nome}</Text>
             <View style={styles.priceBlock}>
               <Text style={styles.priceLabel}>A partir de</Text>
-              <Text style={styles.price}>R$ {professional.startingPrice}</Text>
+              <Text style={styles.price}>R$ {card.preco_minimo.toFixed(0)}</Text>
             </View>
           </View>
 
-          <Text style={styles.profession}>{professional.profession}</Text>
+          <Text style={styles.profession}>{card.categoria}</Text>
 
           <View style={styles.metaRow}>
             <Text style={styles.star}>⭐</Text>
-            <Text style={styles.rating}>{professional.rating}</Text>
-            <Text style={styles.reviews}>({professional.reviews})</Text>
+            <Text style={styles.rating}>{card.avaliacao_media.toFixed(1)}</Text>
             <Text style={styles.metaDivider}>  🕐</Text>
-            <Text style={styles.duration}>{professional.duration}</Text>
+            <Text style={styles.duration}>{card.duracao_min}min</Text>
           </View>
         </View>
       </View>
@@ -50,26 +112,59 @@ function ProfessionalCard({ professional }: { professional: typeof PROFESSIONALS
 
       {/* Services tags */}
       <View style={styles.tags}>
-        {professional.services.map((svc, i) => (
-          <View key={i} style={styles.tag}>
-            <Text style={styles.tagText}>{svc}</Text>
+        {card.servicos.slice(0, 3).map((svc) => (
+          <View key={svc.id} style={styles.tag}>
+            <Text style={styles.tagText}>{svc.nome}</Text>
           </View>
         ))}
+        {card.servicos.length > 3 && (
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>+{card.servicos.length - 3}</Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
 }
 
 export default function HomeScreen() {
+  const { usuario } = useAuth();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('todos');
+  const [profissionais, setProfissionais] = useState<ProfissionalCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [erro, setErro] = useState('');
 
-  const filtered = PROFESSIONALS.filter((p) => {
-    const matchCategory = activeCategory === 'todos' || p.category === activeCategory;
+  const carregarServicos = useCallback(async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    setErro('');
+    try {
+      const params = activeCategory !== 'todos' ? { categoria: activeCategory } : undefined;
+      const servicos = await servicosService.listar(params);
+      setProfissionais(agruparPorProfissional(servicos));
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao carregar profissionais.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [activeCategory]);
+
+  useEffect(() => {
+    carregarServicos();
+  }, [carregarServicos]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    carregarServicos(true);
+  };
+
+  const filtered = profissionais.filter((p) => {
     const matchSearch =
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.profession.toLowerCase().includes(search.toLowerCase());
-    return matchCategory && matchSearch;
+      p.profissional_nome.toLowerCase().includes(search.toLowerCase()) ||
+      p.servicos.some((s) => s.nome.toLowerCase().includes(search.toLowerCase()));
+    return matchSearch;
   });
 
   return (
@@ -77,11 +172,16 @@ export default function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+        }
       >
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Olá, Cliente! 👋</Text>
+            <Text style={styles.greeting}>
+              Olá, {usuario?.nome?.split(' ')[0] || 'Cliente'}! 👋
+            </Text>
             <Text style={styles.subtitle}>Encontre seu profissional</Text>
           </View>
         </View>
@@ -125,14 +225,28 @@ export default function HomeScreen() {
 
         {/* List */}
         <View style={styles.list}>
-          {filtered.map((p) => (
-            <ProfessionalCard key={p.id} professional={p} />
-          ))}
-          {filtered.length === 0 && (
+          {loading ? (
+            <View style={styles.loadingState}>
+              <ActivityIndicator size="large" color={Colors.primary} />
+              <Text style={styles.loadingText}>Carregando profissionais...</Text>
+            </View>
+          ) : erro ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>⚠️</Text>
+              <Text style={styles.emptyText}>{erro}</Text>
+              <TouchableOpacity style={styles.retryBtn} onPress={() => carregarServicos()}>
+                <Text style={styles.retryText}>Tentar novamente</Text>
+              </TouchableOpacity>
+            </View>
+          ) : filtered.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyEmoji}>🔍</Text>
               <Text style={styles.emptyText}>Nenhum profissional encontrado</Text>
             </View>
+          ) : (
+            filtered.map((p) => (
+              <ProfessionalCard key={p.profissional_id} card={p} />
+            ))
           )}
         </View>
       </ScrollView>
@@ -223,6 +337,15 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 4,
   },
+  loadingState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
   card: {
     backgroundColor: Colors.white,
     borderRadius: 18,
@@ -279,6 +402,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 2,
     marginBottom: 8,
+    textTransform: 'capitalize',
   },
   metaRow: {
     flexDirection: 'row',
@@ -292,11 +416,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.text,
     marginLeft: 3,
-  },
-  reviews: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginLeft: 2,
   },
   metaDivider: {
     fontSize: 12,
@@ -339,5 +458,17 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+  },
+  retryText: {
+    color: Colors.white,
+    fontWeight: '600',
   },
 });

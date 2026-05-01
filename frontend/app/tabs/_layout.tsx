@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../../constants/Colors';
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
@@ -34,7 +34,7 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Início',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🕐" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -56,13 +56,6 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="perfil"
-        options={{
-          title: 'Perfil',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
         name="agendamentos"
         options={{
           title: 'Agenda',
@@ -70,11 +63,16 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="profissional"
+        name="perfil"
         options={{
-          href: null, // hide from tab bar
+          title: 'Perfil',
+          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
         }}
       />
+      {/* Telas ocultas da tab bar */}
+      <Tabs.Screen name="empreendedor" options={{ href: null }} />
+      <Tabs.Screen name="agendar" options={{ href: null }} />
+      <Tabs.Screen name="profissional" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../../constants/Colors';
+import { useAuth } from '../../contexts/AuthContext';
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return (
@@ -9,6 +10,9 @@ function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
 }
 
 export default function TabsLayout() {
+  const { usuario } = useAuth();
+  const isEmpreendedor = usuario?.tipo === 'empreendedor';
+
   return (
     <Tabs
       screenOptions={{
@@ -34,7 +38,16 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Início',
+          href: isEmpreendedor ? null : '/',
           tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="empreendedor"
+        options={{
+          title: 'Meu Painel',
+          href: isEmpreendedor ? '/tabs/empreendedor' : null,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="📈" focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -70,7 +83,6 @@ export default function TabsLayout() {
         }}
       />
       {/* Telas ocultas da tab bar */}
-      <Tabs.Screen name="empreendedor" options={{ href: null }} />
       <Tabs.Screen name="agendar" options={{ href: null }} />
       <Tabs.Screen name="profissional" options={{ href: null }} />
     </Tabs>

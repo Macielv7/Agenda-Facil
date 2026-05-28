@@ -8,9 +8,11 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Colors } from '../../constants/Colors';
+import { useAuth } from '../../contexts/AuthContext';
 import { agendamentosService, Agendamento } from '../../services/apiService';
 import { STATUS_LABELS, STATUS_COLORS, STATUS_BG } from '../../constants/data';
 
@@ -36,10 +38,12 @@ function BookingCard({
   booking,
   onAtualizarStatus,
   atualizando,
+  tipoUsuario,
 }: {
   booking: Agendamento;
   onAtualizarStatus: (id: number, status: 'confirmado' | 'cancelado' | 'concluido') => void;
   atualizando: number | null;
+  tipoUsuario?: 'cliente' | 'empreendedor';
 }) {
   const statusColor = STATUS_COLORS[booking.status] || '#666';
   const statusBg = STATUS_BG[booking.status] || '#eee';
@@ -99,12 +103,14 @@ function BookingCard({
           <View style={styles.actions}>
             {booking.status === 'confirmado' && (
               <>
-                <TouchableOpacity
-                  style={styles.successBtn}
-                  onPress={() => onAtualizarStatus(booking.id, 'concluido')}
-                >
-                  <Text style={styles.successBtnText}>Concluir</Text>
-                </TouchableOpacity>
+                {tipoUsuario === 'empreendedor' && (
+                  <TouchableOpacity
+                    style={styles.successBtn}
+                    onPress={() => onAtualizarStatus(booking.id, 'concluido')}
+                  >
+                    <Text style={styles.successBtnText}>Concluir</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={styles.cancelBtn}
                   onPress={() => onAtualizarStatus(booking.id, 'cancelado')}
@@ -115,18 +121,29 @@ function BookingCard({
             )}
             {booking.status === 'pendente' && (
               <>
-                <TouchableOpacity
-                  style={styles.confirmBtn}
-                  onPress={() => onAtualizarStatus(booking.id, 'confirmado')}
-                >
-                  <Text style={styles.confirmBtnText}>Confirmar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.refuseBtn}
-                  onPress={() => onAtualizarStatus(booking.id, 'cancelado')}
-                >
-                  <Text style={styles.refuseBtnText}>Recusar</Text>
-                </TouchableOpacity>
+                {tipoUsuario === 'empreendedor' ? (
+                  <>
+                    <TouchableOpacity
+                      style={styles.confirmBtn}
+                      onPress={() => onAtualizarStatus(booking.id, 'confirmado')}
+                    >
+                      <Text style={styles.confirmBtnText}>Confirmar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.refuseBtn}
+                      onPress={() => onAtualizarStatus(booking.id, 'cancelado')}
+                    >
+                      <Text style={styles.refuseBtnText}>Recusar</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => onAtualizarStatus(booking.id, 'cancelado')}
+                  >
+                    <Text style={styles.cancelBtnText}>Cancelar</Text>
+                  </TouchableOpacity>
+                )}
               </>
             )}
           </View>
@@ -137,6 +154,7 @@ function BookingCard({
 }
 
 export default function AgendamentosScreen() {
+  const { usuario } = useAuth();
   const [activeFilter, setActiveFilter] = useState('todos');
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [loading, setLoading] = useState(true);
@@ -177,6 +195,32 @@ export default function AgendamentosScreen() {
       concluido: 'Marcar este agendamento como concluído?',
     };
 
+    const runAction = async () => {
+      setAtualizando(id);
+      try {
+        await agendamentosService.atualizarStatus(id, status);
+        // Atualiza localmente sem refetch completo
+        setAgendamentos((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, status } : a)),
+        );
+      } catch (e: any) {
+        if (Platform.OS === 'web') {
+          window.alert(e.message || 'Não foi possível atualizar o agendamento.');
+        } else {
+          Alert.alert('Erro', e.message || 'Não foi possível atualizar o agendamento.');
+        }
+      } finally {
+        setAtualizando(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(mensagens[status])) {
+        runAction();
+      }
+      return;
+    }
+
     Alert.alert(
       status.charAt(0).toUpperCase() + status.slice(1),
       mensagens[status],
@@ -185,20 +229,7 @@ export default function AgendamentosScreen() {
         {
           text: 'Sim',
           style: status === 'cancelado' ? 'destructive' : 'default',
-          onPress: async () => {
-            setAtualizando(id);
-            try {
-              await agendamentosService.atualizarStatus(id, status);
-              // Atualiza localmente sem refetch completo
-              setAgendamentos((prev) =>
-                prev.map((a) => (a.id === id ? { ...a, status } : a)),
-              );
-            } catch (e: any) {
-              Alert.alert('Erro', e.message || 'Não foi possível atualizar o agendamento.');
-            } finally {
-              setAtualizando(null);
-            }
-          },
+          onPress: runAction,
         },
       ],
     );
@@ -279,6 +310,7 @@ export default function AgendamentosScreen() {
               booking={b}
               onAtualizarStatus={handleAtualizarStatus}
               atualizando={atualizando}
+              tipoUsuario={usuario?.tipo}
             />
           ))
         )}

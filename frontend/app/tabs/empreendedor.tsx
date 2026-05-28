@@ -196,6 +196,12 @@ export default function EmpreendedorScreen() {
   };
 
   const handleLogout = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Deseja realmente sair?')) {
+        logout().then(() => router.replace('/'));
+      }
+      return;
+    }
     Alert.alert('Sair', 'Deseja realmente sair?', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Sair', style: 'destructive', onPress: async () => { await logout(); router.replace('/'); }},

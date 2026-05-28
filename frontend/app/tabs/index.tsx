@@ -46,10 +46,10 @@ interface ProfissionalCard {
 function agruparPorProfissional(servicos: Servico[]): ProfissionalCard[] {
   const mapa: Record<number, ProfissionalCard> = {};
   for (const s of servicos) {
-    if (!mapa[s.profissional_id]) {
-      mapa[s.profissional_id] = {
-        profissional_id: s.profissional_id,
-        profissional_nome: s.profissional_nome || 'Profissional',
+    if (!mapa[s.empreendedor_id]) {
+      mapa[s.empreendedor_id] = {
+        profissional_id: s.empreendedor_id,
+        profissional_nome: s.empreendedor_nome || 'Profissional',
         foto_url: s.foto_url,
         avaliacao_media: s.avaliacao_media || 0,
         categoria: s.categoria,
@@ -58,9 +58,9 @@ function agruparPorProfissional(servicos: Servico[]): ProfissionalCard[] {
         duracao_min: s.duracao_min,
       };
     }
-    mapa[s.profissional_id].servicos.push(s);
-    if (s.preco < mapa[s.profissional_id].preco_minimo) {
-      mapa[s.profissional_id].preco_minimo = s.preco;
+    mapa[s.empreendedor_id].servicos.push(s);
+    if (s.preco < mapa[s.empreendedor_id].preco_minimo) {
+      mapa[s.empreendedor_id].preco_minimo = s.preco;
     }
   }
   return Object.values(mapa);
@@ -135,6 +135,13 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [erro, setErro] = useState('');
+
+  // Redirect if entrepreneur
+  useEffect(() => {
+    if (usuario?.tipo === 'empreendedor') {
+      router.replace('/tabs/empreendedor');
+    }
+  }, [usuario]);
 
   const carregarServicos = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);

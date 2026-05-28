@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Colors } from '../../constants/Colors';
@@ -232,6 +233,12 @@ export default function ProfissionalScreen() {
   };
 
   const handleLogout = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Deseja realmente sair?')) {
+        logout().then(() => router.replace('/'));
+      }
+      return;
+    }
     Alert.alert('Sair da conta', 'Deseja realmente sair?', [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -239,7 +246,7 @@ export default function ProfissionalScreen() {
         style: 'destructive',
         onPress: async () => {
           await logout();
-          router.replace('/auth/login');
+          router.replace('/');
         },
       },
     ]);

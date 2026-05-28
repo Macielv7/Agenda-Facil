@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, TextInput, Alert,
+  ActivityIndicator, TextInput, Alert, Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Colors } from '../../constants/Colors';
@@ -79,11 +79,20 @@ export default function AgendarScreen() {
         data_hora: dataHora,
         observacao: observacao.trim() || undefined,
       });
-      Alert.alert('✅ Agendamento realizado!', `${servicoSelecionado.nome} com ${empreendedorNome} em ${DIAS[diaIdx].label} às ${horario}`, [
-        { text: 'OK', onPress: () => router.replace('/tabs/agendamentos') },
-      ]);
+      if (Platform.OS === 'web') {
+        window.alert(`✅ Agendamento realizado!\n${servicoSelecionado.nome} com ${empreendedorNome} em ${DIAS[diaIdx].label} às ${horario}`);
+        router.replace('/tabs/agendamentos');
+      } else {
+        Alert.alert('✅ Agendamento realizado!', `${servicoSelecionado.nome} com ${empreendedorNome} em ${DIAS[diaIdx].label} às ${horario}`, [
+          { text: 'OK', onPress: () => router.replace('/tabs/agendamentos') },
+        ]);
+      }
     } catch (e: any) {
-      Alert.alert('Erro', e.message || 'Não foi possível criar o agendamento.');
+      if (Platform.OS === 'web') {
+        window.alert(e.message || 'Não foi possível criar o agendamento.');
+      } else {
+        Alert.alert('Erro', e.message || 'Não foi possível criar o agendamento.');
+      }
     } finally { setEnviando(false); }
   };
 
